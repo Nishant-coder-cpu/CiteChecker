@@ -34,6 +34,16 @@ def test_falls_back_to_cached_endpoints():
     good = run(r)
     inner.fail, inner.calls = 99, 0
     assert run(r) == good
+    assert inner.calls == 0
+
+
+def test_invalidated_cache_is_refreshed():
+    inner = Flaky(fail=0)
+    r = ResilientResolver(inner=inner, attempts=1)
+    assert run(r)[1]
+    r.invalidate(ADDR)
+    assert run(r)[1]
+    assert inner.calls == 2
 
 
 def test_gives_up_without_cache():

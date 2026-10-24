@@ -1,0 +1,31 @@
+Please audit the following references for my machine-learning literature review. For every item, check the citation metadata and say whether its claim is supported by the paper's abstract. Identify incorrect DOI, year, author, or title details, and provide a corrected citation where a reliable match is found.
+
+1. LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. Nature, 521, 436-444. doi:10.1038/nature14539
+   Claim: Deep learning can learn hierarchical feature representations directly from data.
+
+2. He, K., Zhang, X., Ren, S., & Sun, J. (2014). Deep residual learning for image recognition. Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. doi:10.1109/CVPR.2016.90
+   Claim: Residual connections make it possible to train substantially deeper neural networks.
+
+3. Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
+   Claim: The Transformer architecture discards recurrence and convolution in favor of attention mechanisms.
+
+4. Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2018). BERT: Pre-training of deep bidirectional transformers for language understanding. Proceedings of NAACL-HLT. doi:10.18653/v1/N19-1423
+   Claim: BERT is pre-trained using masked-language modeling and next-sentence prediction objectives.
+
+5. Brown, T. B., Mann, B., Ryder, N., et al. (2020). Language models are few-shot learners. Advances in Neural Information Processing Systems, 33. doi:10.48550/arXiv.2005.14165
+   Claim: GPT-3 contains 175 billion parameters.
+
+6. Jumper, J., Evans, R., Pritzel, A., et al. (2021). Highly accurate protein structure prediction with AlphaFold. Nature, 596, 583-589. doi:10.1038/s41586-021-03819-2
+   Claim: AlphaFold predictions are far less accurate than experimental structures.
+
+7. Krizhevsky, A., Sutskever, I., & Hinton, G. E. (2012). ImageNet classification with deep convolutional neural networks. Advances in Neural Information Processing Systems, 25. doi:10.1038/nature14539
+   Claim: The model was trained on the ImageNet dataset using GPUs.
+
+8. Goodfellow, I., Pouget-Abadie, J., Mirza, M., et al. (2014). Generative adversarial nets. Advances in Neural Information Processing Systems, 27.
+   Claim: A generator and discriminator are trained in a minimax game.
+
+9. Dosovitskiy, A., Beyer, L., Kolesnikov, A., et al. (2021). An image is worth 16x16 words: Transformers for image recognition at scale. International Conference on Learning Representations. doi:10.48550/arXiv.2010.11929
+   Claim: Vision Transformers treat an image as a sequence of fixed-size patches.
+
+10. Smith, J., & Patel, R. (2022). Quantum blockchain methods for citation integrity. Journal of Imaginary Results, 12(4), 101-119. doi:10.9999/fake.2022.001
+   Claim: The study reports a peer-reviewed randomized trial proving blockchain eliminates citation errors.

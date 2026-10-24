@@ -12,6 +12,7 @@ from .messages import VerifyRequest, VerifyResponse
 from .models import AuditReport, VerificationResult
 
 VERIFIER_TIMEOUT = int(os.getenv("VERIFIER_TIMEOUT", "45"))
+VERIFIER_QUEUE_TIMEOUT = float(os.getenv("VERIFIER_QUEUE_TIMEOUT", "5"))
 # The agent server tracks pending sync requests per *sender address*, so two
 # concurrent requests from this agent would overwrite each other's reply slot.
 _ONE_AT_A_TIME = asyncio.Lock()
@@ -28,9 +29,15 @@ def make_remote_verify(ctx: Context, verifier_address: str, resolver: Resolver |
         # Deliberately NOT ctx.send_and_receive: the SDK sends all outgoing
         # messages through one sequential queue, and a slow verification there
         # would delay replies to ASI:One past their send timeout.
-        for attempt in range(2):
-            try:
-                async with _ONE_AT_A_TIME:
+        try:
+            await asyncio.wait_for(_ONE_AT_A_TIME.acquire(), timeout=VERIFIER_QUEUE_TIMEOUT)
+        except TimeoutError:
+            ctx.logger.warning("Verifier is busy; using local fallback rather than queueing this chat request")
+            return None
+
+        try:
+            for attempt in range(2):
+                try:
                     reply = await asyncio.wait_for(
                         send_sync_message(
                             verifier_address,
@@ -42,14 +49,16 @@ def make_remote_verify(ctx: Context, verifier_address: str, resolver: Resolver |
                         ),
                         VERIFIER_TIMEOUT,
                     )
-            except Exception as exc:  # noqa: BLE001 - timeout or connection error
-                reply = None
-                detail = f"{type(exc).__name__}"
-            else:
-                detail = reply.detail if isinstance(reply, MsgStatus) else "unexpected reply"
-            if isinstance(reply, VerifyResponse):
-                break
-            ctx.logger.warning(f"Verifier attempt {attempt + 1} failed ({detail})")
+                except Exception as exc:  # noqa: BLE001 - timeout or connection error
+                    reply = None
+                    detail = f"{type(exc).__name__}"
+                else:
+                    detail = reply.detail if isinstance(reply, MsgStatus) else "unexpected reply"
+                if isinstance(reply, VerifyResponse):
+                    break
+                ctx.logger.warning(f"Verifier attempt {attempt + 1} failed ({detail})")
+        finally:
+            _ONE_AT_A_TIME.release()
 
         if not isinstance(reply, VerifyResponse) or reply.error or reply.audit_id != report.audit_id:
             error = reply.error if isinstance(reply, VerifyResponse) else None

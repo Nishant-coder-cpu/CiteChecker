@@ -125,3 +125,8 @@ def parse_references(text: str) -> list[ParsedReference]:
             )
         )
     return refs
+
+
+def count_references(text: str) -> int:
+    """Return the number of reference blocks before applying the service cap."""
+    return len(_split_blocks(text))

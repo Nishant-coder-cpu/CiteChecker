@@ -105,7 +105,8 @@ def test_progress_messages_are_ordered_and_capped(fake_registries):
     llm = ScriptedAgentLLM("none")
     asyncio.run(handle_request(text, llm, None, progress=progress))
     assert said[0].startswith("🔎 Found **6 reference(s)**")
-    assert said[-1].startswith("🛡️")
+    assert said[-2].startswith("🛡️")
+    assert said[-1].startswith("✅ Verification complete")
     assert sum(s.startswith("🧠") for s in said) == 3            # capped
 
 

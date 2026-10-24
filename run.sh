@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Start the Verifier agent and the CiteCheck agent in the background (Linux/macOS).
-# Usage: ./run.sh start | stop | restart | status
+# Usage: ./run.sh start | stop | restart | status | logs
 cd "$(dirname "$0")"
+ENV_AGENT_PORT=
+ENV_VERIFIER_PORT=
+if [ -f .env ]; then
+  ENV_AGENT_PORT=$(sed -n 's/^AGENT_PORT=//p' .env | tail -1 | tr -d '[:space:]')
+  ENV_VERIFIER_PORT=$(sed -n 's/^VERIFIER_PORT=//p' .env | tail -1 | tr -d '[:space:]')
+fi
+
 PY=${PY:-.venv/bin/python}
-CITECHECK_PORT=${AGENT_PORT:-8001}
-VERIFIER_PORT=${VERIFIER_PORT:-8002}
+CITECHECK_PORT=${AGENT_PORT:-${ENV_AGENT_PORT:-8001}}
+VERIFIER_PORT=${VERIFIER_PORT:-${ENV_VERIFIER_PORT:-8002}}
+case "$CITECHECK_PORT:$VERIFIER_PORT" in
+  *[!0-9:]*|:*|*:) echo "AGENT_PORT and VERIFIER_PORT must be numeric"; exit 1 ;;
+esac
 mkdir -p logs
 
 # PID of this user's process listening on a port (empty if none)
@@ -43,9 +53,18 @@ stop() {
 status() {
   for entry in "verifier:$VERIFIER_PORT" "citecheck:$CITECHECK_PORT"; do
     name=${entry%%:*}; port=${entry##*:}
-    if running "$name" "$port"; then echo "$name: running (pid $(cat "logs/$name.pid"), port $port)"
+    if running "$name" "$port"; then
+      echo "$name: running (pid $(cat "logs/$name.pid"), port $port)"
+      if [ "$name" = "citecheck" ]; then
+        mailbox=$(grep -E "mailbox (server|client)" logs/citecheck.log 2>/dev/null | tail -1)
+        [ -n "$mailbox" ] && echo "  mailbox: $mailbox"
+      fi
     else echo "$name: stopped"; fi
   done
+}
+
+logs() {
+  tail -n 80 -F logs/verifier.log logs/citecheck.log
 }
 
 case "${1:-start}" in
@@ -53,5 +72,6 @@ case "${1:-start}" in
   stop) stop ;;
   restart) stop; start ;;
   status) status ;;
-  *) echo "usage: $0 start|stop|restart|status"; exit 1 ;;
+  logs) logs ;;
+  *) echo "usage: $0 start|stop|restart|status|logs"; exit 1 ;;
 esac

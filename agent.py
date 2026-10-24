@@ -141,14 +141,43 @@ async def handle_chat(
 
 
 async def send_text(ctx: Context, recipient: str, text: str, end_session: bool = True):
-    content = [TextContent(type="text", text=text)]
-    if end_session:
-        content.append(EndSessionContent(type="end-session"))
-    message = ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
-    with trace.span("reply.deliver") as sp:
-        status = await _deliver(ctx, recipient, message)
+    # The ASI:One/Flock chat relay can time out on a large Markdown payload.
+    # Send a long report in small, ordered ACP messages and close the session
+    # only after its last part.  This also makes a partial result visible if a
+    # relay fails midway through delivery.
+    parts = _message_parts(text)
+    status = None
+    with trace.span("reply.deliver", parts=len(parts)) as sp:
+        for index, part in enumerate(parts):
+            content = [TextContent(type="text", text=part)]
+            if end_session and index == len(parts) - 1:
+                content.append(EndSessionContent(type="end-session"))
+            message = ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
+            status = await _deliver(ctx, recipient, message)
+            if status.status == DeliveryStatus.FAILED:
+                break
+        assert status is not None
         sp.set("ok" if status.status != DeliveryStatus.FAILED else "failed", detail=status.detail)
     return status
+
+
+MAX_CHAT_MESSAGE_CHARS = int(os.getenv("MAX_CHAT_MESSAGE_CHARS", "6000"))
+
+
+def _message_parts(text: str) -> list[str]:
+    """Split a report at line boundaries without losing any text."""
+    if len(text) <= MAX_CHAT_MESSAGE_CHARS:
+        return [text]
+    parts: list[str] = []
+    remaining = text
+    while len(remaining) > MAX_CHAT_MESSAGE_CHARS:
+        cut = remaining.rfind("\n", 0, MAX_CHAT_MESSAGE_CHARS)
+        if cut <= 0:
+            cut = MAX_CHAT_MESSAGE_CHARS
+        parts.append(remaining[:cut])
+        remaining = remaining[cut:].lstrip("\n")
+    parts.append(remaining)
+    return parts
 
 
 async def _deliver(ctx: Context, recipient: str, message: ChatMessage):
@@ -157,6 +186,7 @@ async def _deliver(ctx: Context, recipient: str, message: ChatMessage):
         if status.status != DeliveryStatus.FAILED:
             ctx.logger.info(f"Reply to {recipient}: {status.status.value} ({status.detail})")
             return status
+        RESOLVER.invalidate(recipient)
         if "timeout" in (status.detail or "").lower() or "429" in (status.detail or ""):
             # After a send timeout the envelope may still go out (a retry could
             # deliver it twice); after a 429, retrying only adds load.
@@ -168,27 +198,105 @@ async def _deliver(ctx: Context, recipient: str, message: ChatMessage):
     return status
 
 
-PROGRESS_UPDATES = os.getenv("PROGRESS_UPDATES", "on") == "on"
+# Status updates use the same webhook as the final report.  They are disabled
+# by default because a slow relay can queue them ahead of the actual result.
+PROGRESS_UPDATES = os.getenv("PROGRESS_UPDATES", "off") == "on"
+PROGRESS_HEARTBEAT_SECONDS = float(os.getenv("PROGRESS_HEARTBEAT_SECONDS", "0"))
+PROGRESS_SEND_TIMEOUT = float(os.getenv("PROGRESS_SEND_TIMEOUT", "3"))
 
 
-def make_progress(ctx: Context, recipient: str):
-    """Short status messages to the chat while the audit runs (no end-session)."""
-    async def progress(text: str) -> None:
-        with trace.span("progress.send"):
-            await ctx.send(recipient, ChatMessage(
-                timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
-                content=[TextContent(type="text", text=text)],
-            ))
-    return progress
+class ProgressStream:
+    """Ordered activity updates for an ACP chat session.
+
+    ACP has no message-edit operation, so the changing spinner is sent as a
+    compact live feed. Each update is delivered in sequence, and close() waits
+    for any in-flight update so the final report can never overtake it.
+    """
+
+    FRAMES = ("◐", "◓", "◑", "◒")
+
+    def __init__(self, ctx: Context, recipient: str):
+        self.ctx = ctx
+        self.recipient = recipient
+        self.started = time.perf_counter()
+        self.closed = False
+        self.send_lock = asyncio.Lock()
+        self.stop_event = asyncio.Event()
+        self.heartbeat: asyncio.Task | None = None
+
+    async def start(self) -> None:
+        if PROGRESS_HEARTBEAT_SECONDS > 0:
+            self.heartbeat = asyncio.create_task(self._pulse(), name="citecheck-progress-heartbeat")
+
+    async def __call__(self, text: str) -> None:
+        if self.closed:
+            return
+        await self._send(text)
+
+    async def _send(self, text: str) -> None:
+        message = ChatMessage(
+            timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
+            content=[TextContent(type="text", text=text)],
+        )
+        async with self.send_lock:
+            with trace.span("progress.send") as sp:
+                try:
+                    status = await asyncio.wait_for(
+                        self.ctx.send(self.recipient, message), timeout=PROGRESS_SEND_TIMEOUT
+                    )
+                except TimeoutError:
+                    sp.set("timeout", detail=f"progress send exceeded {PROGRESS_SEND_TIMEOUT:g}s")
+                except Exception as exc:  # noqa: BLE001 - progress must never interrupt an audit
+                    sp.set("error", error=type(exc).__name__)
+                else:
+                    detail = getattr(status, "detail", None)
+                    failed = getattr(status, "status", None) == DeliveryStatus.FAILED
+                    sp.set("failed" if failed else "ok", detail=detail)
+                    if failed:
+                        RESOLVER.invalidate(self.recipient)
+
+    async def _pulse(self) -> None:
+        frame = 0
+        while not self.stop_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self.stop_event.wait(), timeout=PROGRESS_HEARTBEAT_SECONDS
+                )
+                break
+            except asyncio.TimeoutError:
+                pass
+            elapsed = int(time.perf_counter() - self.started)
+            await self._send(
+                f"{self.FRAMES[frame % len(self.FRAMES)]} **Still working** · {elapsed}s elapsed. "
+                "I am continuing the audit…"
+            )
+            frame += 1
+
+    async def close(self) -> None:
+        self.closed = True
+        self.stop_event.set()
+        if self.heartbeat is not None:
+            await self.heartbeat
+        # A heartbeat may already have entered _send(). Waiting for the lock
+        # guarantees it finishes before send_text() emits the final report.
+        async with self.send_lock:
+            pass
+
+
+def make_progress(ctx: Context, recipient: str) -> ProgressStream:
+    return ProgressStream(ctx, recipient)
 
 
 async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str | None = None):
     tr = trace.Trace("chat_audit", sender=sender, paid=bool(preamble)).activate()
     start = time.perf_counter()
+    progress = make_progress(ctx, sender) if PROGRESS_UPDATES else None
+    if progress is not None:
+        await progress.start()
     try:
         answer = await handle_request(
             user_text, llm, make_remote_verify(ctx, VERIFIER_ADDRESS, RESOLVER), preamble,
-            progress=make_progress(ctx, sender) if PROGRESS_UPDATES else None,
+            progress=progress,
         )
     except Exception:
         ctx.logger.exception("Audit failed")
@@ -196,6 +304,10 @@ async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str
             "Something went wrong while auditing these references, so no "
             "results are reported. Please try again in a moment."
         )
+
+    finally:
+        if progress is not None:
+            await progress.close()
 
     elapsed = time.perf_counter() - start
     ctx.logger.info(f"Audit response generated in {elapsed:.2f} seconds")

@@ -103,7 +103,8 @@ def _safe(source: str, fn) -> Lookup:
     try:
         return fn()
     except requests.Timeout:
-        return Lookup(source, error=f"{source} timed out after {TIMEOUT:.0f}s")
+        timeout = OPENALEX_TIMEOUT if source == "openalex" else TIMEOUT
+        return Lookup(source, error=f"{source} timed out after {timeout:.0f}s")
     except requests.RequestException as exc:
         return Lookup(source, error=f"{source} request failed: {type(exc).__name__}")
     except (ValueError, KeyError, TypeError) as exc:

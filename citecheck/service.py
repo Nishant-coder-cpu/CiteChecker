@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from . import trace
 from .audit import reaudit, run_audit
 from .models import AuditReport, VerificationResult
-from .parsing import MAX_REFERENCES, parse_references
+from .parsing import MAX_REFERENCES, count_references, parse_references
 from .report import render_report
 from .verify import verify_report
 
@@ -60,6 +60,13 @@ I'll report verified, mismatched and unresolved references, suggested correction
 
 async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None = None,
                          preamble: str | None = None, progress: Progress | None = None) -> str:
+    submitted = count_references(text)
+    if submitted > MAX_REFERENCES:
+        return (
+            f"I found **{submitted} references**, but one audit can contain at most "
+            f"**{MAX_REFERENCES}**. Please split them into smaller batches; I have not "
+            "started an audit or payment request."
+        )
     refs = parse_references(text)
     if not refs:
         return ("I couldn't find any references in that message (I look for lines with a DOI, "
@@ -89,6 +96,7 @@ async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None
             f"Round 2: {'passed' if verification.passed else 'still failing'}."
         )
 
+    await _say(progress, "✅ Verification complete. Preparing the final report now…")
     rendered = render_report(report, verification)
     tr = trace.current()
     if tr is not None:

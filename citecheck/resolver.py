@@ -18,17 +18,28 @@ LOGGER = logging.getLogger("citecheck.resolver")
 
 class ResilientResolver(Resolver):
     def __init__(self, static: dict[str, str] | None = None, attempts: int = 3,
-                 cache_ttl: float = 3600.0, inner: Resolver | None = None):
+                 cache_ttl: float = 3600.0, prefer_cache_ttl: float = 300.0,
+                 inner: Resolver | None = None):
         self._inner = inner or GlobalResolver()
         self._static = static or {}
         self._attempts = attempts
         self._cache_ttl = cache_ttl
+        self._prefer_cache_ttl = prefer_cache_ttl
         self._cache: dict[str, tuple[float, str, list[str]]] = {}
+
+    def invalidate(self, destination: str) -> None:
+        """Forget a cached endpoint after a definite delivery failure."""
+        _, _, address = parse_identifier(destination)
+        self._cache.pop(address, None)
 
     async def resolve(self, destination: str) -> tuple[str | None, list[str]]:
         _, _, address = parse_identifier(destination)
         if address in self._static:
             return address, [self._static[address]]
+
+        cached = self._cache.get(address)
+        if cached and time.monotonic() - cached[0] < self._prefer_cache_ttl:
+            return cached[1], cached[2]
 
         for attempt in range(self._attempts):
             try:

@@ -3,15 +3,20 @@
     python scripts/trace_summary.py [path] [--last N]
 """
 
+import argparse
 import json
 import statistics
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-args = [a for a in sys.argv[1:] if not a.startswith("--")]
-path = Path(args[0]) if args else Path(__file__).resolve().parents[1] / "logs" / "traces.jsonl"
-last = int(sys.argv[sys.argv.index("--last") + 1]) if "--last" in sys.argv else None
+parser = argparse.ArgumentParser(description="Summarise CiteCheck JSONL traces")
+parser.add_argument("path", nargs="?", type=Path,
+                    default=Path(__file__).resolve().parents[1] / "logs" / "traces.jsonl")
+parser.add_argument("--last", type=int, metavar="N", help="only include the last N traces")
+parsed_args = parser.parse_args()
+path = parsed_args.path
+last = parsed_args.last
 
 traces = [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
 if last:

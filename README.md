@@ -1,14 +1,41 @@
-# CiteCheck — verified citation audits for ASI:One
+# CiteCheck
 
-![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
-![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
+**Evidence-backed citation audits for ASI:One**
 
-Paste a reference list into ASI:One and get back an evidence-backed audit: which citations are correct,
-which have wrong DOIs, years or authors, which can't be found, and whether a paper's abstract supports the
-claim you cite it for. A second, independent **Verifier agent** then re-checks the report, and the result of
-that check is shown to you.
+[![Python 3.10–3.13](https://img.shields.io/badge/python-3.10--3.13-3776AB?logo=python&logoColor=white)](#setup)
+[![Tests](https://img.shields.io/badge/tests-41%20passing-2ea44f)](#test)
+[![Fetch.ai Innovation Lab](https://img.shields.io/badge/Fetch.ai-Innovation%20Lab-3D8BD3)](https://fetch.ai/)
+[![Hackathon](https://img.shields.io/badge/built%20for-Fetch--A--Thon%203.0-5F43F1)](#)
 
-Built for Fetch-A-Thon 3.0 (IIT Mandi).
+Paste a bibliography into ASI:One and CiteCheck checks citations against Crossref and OpenAlex, flags
+metadata mismatches, and assesses claims against paper abstracts. An independent Verifier agent then
+checks the report's evidence and calculations.
+
+> **Important:** Claim assessments use abstracts, not full papers. A missing registry record does not
+> prove a work is fake, and a passing report verification does not certify the underlying scholarship.
+
+## Contents
+
+- [What it checks](#what-it-checks)
+- [Try an example](#try-an-example)
+- [Architecture](#architecture)
+- [Agentic investigation](#agentic-investigation)
+- [Report verification](#report-verification)
+- [Setup](#setup)
+- [Run](#run)
+- [Test](#test)
+- [Known limitations](#known-limitations)
+- [Resources](#resources)
+
+## What it checks
+
+- **Citation metadata:** parses title, author, year, and DOI, then compares them with Crossref and OpenAlex.
+- **Wrong or missing DOIs:** looks for the cited work when a DOI points to a different paper; only suggests corrections supported by retrieved metadata.
+- **Claim support:** asks ASI1 to assess a claim against the abstract and requires a quote that appears in that abstract for a `plausible` or `contradicted` verdict.
+- **Report integrity:** a separate Verifier checks the results, evidence, counts, suggested corrections, and matched DOI records.
+
+Audits support up to **15 references per request**. Metadata outcomes include `verified`, `mismatch`,
+`doi_not_found`, `not_found`, `insufficient_info`, and `lookup_error`.
 
 | Agent | Role | Address |
 |---|---|---|
@@ -19,46 +46,21 @@ Built for Fetch-A-Thon 3.0 (IIT Mandi).
 
 **Agentverse profile:** https://agentverse.ai/agents/details/agent1qg70hvphw3e3x3excsqtasn0mjsz2hmqu8q7eeqcmu8pa68rhuu2kpwue43/profile
 
-## The problem
+## Try an example
 
-Reference lists are easy to get wrong and tedious to check: a DOI pasted from the wrong paper, a
-preprint year instead of the publication year, an LLM-suggested citation that doesn't exist, or a paper
-cited for something it never says. CiteCheck checks each reference against live scholarly registries and
-labels uncertainty instead of guessing.
+Paste this into the [CiteCheck ASI:One demo](https://asi1.ai/chat/e882fc3e-a3b5-4990-ad27-78d3a7905838):
 
-**Target users:** students, researchers, reviewers and editors checking a bibliography before submission.
-
-## What it does
-
-For each reference (up to 15 per request):
-
-1. **Parses** the reference deterministically: DOI, year, title, first author, and an optional `Claim:`.
-2. **Looks it up** in Crossref and OpenAlex (by DOI, or by bibliographic search when no DOI is given).
-3. **Compares** the cited title, year, first author and DOI with the registry record, field by field.
-4. If the DOI belongs to a different paper, it **searches for the cited title** and reports the correct DOI when it finds one.
-5. **Suggests a corrected entry** only for mismatches, built strictly from retrieved metadata.
-6. **Checks claim support** with ASI1 using the abstract only. The verdict (`plausible` / `uncertain` /
-   `contradicted`) is kept only if the model quotes a passage that literally appears in the abstract;
-   otherwise it is downgraded to `uncertain`.
-7. **Verifies the report** with the separate Verifier agent (see below).
-
-Per-reference metadata statuses: `verified`, `mismatch`, `doi_not_found`, `not_found` (no confident
-match), `insufficient_info`, `lookup_error`.
-
-### Example request (in ASI:One)
-
-```
-Verify these references and tell me which need attention:
+```text
+Check these citations and tell me whether the claim is supported:
 1. He, K., Zhang, X., Ren, S., & Sun, J. (2014). Deep residual learning for image recognition. CVPR. doi:10.1109/CVPR.2016.90
-2. Krizhevsky, A., Sutskever, I., & Hinton, G. (2017). ImageNet classification with deep convolutional neural networks. Communications of the ACM. doi:10.1038/nature14539
-3. Jumper, J., et al. (2021). Highly accurate protein structure prediction with AlphaFold. Nature. doi:10.1038/s41586-021-03819-2
+   Claim: Residual connections make it possible to train substantially deeper networks.
+2. Jumper, J., et al. (2021). Highly accurate protein structure prediction with AlphaFold. Nature. doi:10.1038/s41586-021-03819-2
    Claim: AlphaFold predictions are far less accurate than experimental structures.
 ```
 
-Expected outcome (from a live run): #1 year mismatch (2014 → 2016) with a corrected entry; #2 the DOI
-belongs to "Deep learning" (LeCun et al.), and the cited paper is found under `10.1145/3065386`; #3 the claim is
-**contradicted**, quoting the abstract ("accuracy competitive with experimental structures…").
-A larger curated set is in [demo/demo_references.txt](demo/demo_references.txt).
+The first citation should be flagged for its year; the second claim should be contradicted by the abstract.
+For a larger example, see [demo/demo_references.txt](demo/demo_references.txt) or the ten-reference
+[demo/large_references.txt](demo/large_references.txt).
 
 ## Architecture
 
@@ -89,7 +91,35 @@ flowchart LR
 | [agent.py](agent.py) | ACP chat agent and Payment Protocol (seller) | — |
 | [verifier_agent.py](verifier_agent.py) | Verifier agent | — |
 
-### Agentic layer: ReAct investigator + reflection (`AGENTIC_MODE=on`)
+### Request lifecycle and local demo
+
+Each request follows this path:
+
+1. `agent.py` receives a chat message, or `scripts/live_e2e.py` reads a local input file and calls the same service directly.
+2. `citecheck/parsing.py` extracts references and any associated claims.
+3. `citecheck/audit.py` queries Crossref and OpenAlex, matches records, compares citation fields, and assesses claims against retrieved abstracts.
+4. When enabled, the ASI1 ReAct investigator searches for references the deterministic lookup could not confidently resolve. It can select only records returned by its registry tools; deterministic checks gate its selection.
+5. The structured report is sent to the separate Verifier, which checks the input/report binding, counts, field evidence, corrections, claim quotes, investigator evidence, and (when enabled) live DOI lookups. If the remote Verifier is unavailable, the same deterministic checks run locally.
+6. If verification finds issues and agentic reflection is enabled, flagged references are audited once more. CiteCheck then renders a Markdown report with the results and verification summary.
+
+| Local process | Entry point | Role | Default port |
+|---|---|---|---:|
+| CiteCheck chat agent | `agent.py` | Receives ACP requests and returns audit reports through the Agentverse mailbox. | 8001 |
+| Verifier agent | `verifier_agent.py` | Independently checks audit reports; exposes a local endpoint for the CiteCheck agent. | 8002 |
+| Live demo client | `scripts/live_e2e.py` | Reads an input file, runs the shared service, and writes a UTF-8 Markdown report. | 8000 |
+
+The local demo client calls the request service directly, so it does not need `agent.py` running. Run the Verifier in one terminal and the demo command in another:
+
+```powershell
+.\.venv\Scripts\python.exe .\verifier_agent.py
+.\.venv\Scripts\python.exe .\scripts\live_e2e.py .\demo\large_references.txt .\demo\last_report.md
+```
+
+The Verifier uses a localhost endpoint, so the two long-running agents must run on the same computer. The demo client is temporary and does not expose a public endpoint.
+
+### Agentic investigation
+
+The ReAct investigator and verifier-feedback reflection are enabled with `AGENTIC_MODE=on`.
 
 CiteCheck is a hybrid. A fast deterministic path resolves most references in about a second. When it
 can't (no confident match, a DOI that doesn't resolve, or a DOI pointing to a different paper),
@@ -114,10 +144,10 @@ reference is verified. Try it with [demo/agentic_references.txt](demo/agentic_re
 
 Set `AGENTIC_MODE=off` to run the purely deterministic pipeline.
 
-### Verifier agent: what "verified" means
+### Report verification
 
 `citecheck` sends the user's original text and the full structured report to `citecheck-verifier`, a
-separate process with its own identity, using `ctx.send_and_receive(..., sync=True)`. The Verifier:
+separate process with its own identity, using a signed synchronous agent-to-agent HTTP exchange. The Verifier:
 
 - re-parses the original input itself and checks that there is exactly one result per reference, bound to the right input;
 - recomputes every summary count from the individual records;
@@ -172,26 +202,60 @@ policy in [citecheck/net.py](citecheck/net.py).
 
 Requires Python 3.10–3.13 (tested on 3.12).
 
-```bash
+Clone the repository:
+
+```console
 git clone https://github.com/Nishant-coder-cpu/CiteChecker.git
 cd CiteChecker
-python3.12 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env               # then fill in ASI_ONE_API_KEY and AGENT_SEED
 ```
 
-`AGENT_SEED` determines the agent address. Keep it secret, and don't run two copies with the same seed
-at once (they would compete for the same mailbox). The Verifier's identity is derived from `AGENT_SEED`,
-so no second secret is needed.
+Create a virtual environment and install dependencies.
+
+**Windows PowerShell**
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+```
+
+**Linux/macOS**
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+In `.env`, set `ASI_ONE_API_KEY` and a private `AGENT_SEED`. The seed determines the agent address;
+keep it secret and do not run two copies with the same seed at once, because they would compete for
+the same mailbox. The Verifier's identity is derived from `AGENT_SEED`, so no second secret is needed.
 
 ## Run
+
+Windows PowerShell:
+
+```powershell
+.\run.ps1 start      # starts the Verifier and CiteCheck in the background
+.\run.ps1 status
+.\run.ps1 logs       # follow both agents' logs
+.\run.ps1 stop
+.\run.ps1 restart
+```
+
+The PowerShell launcher writes logs to `logs/`. Standard output is in
+`<agent>.log`; errors are in `<agent>.error.log`. To capture output from agents
+already running in terminals, use `.\run.ps1 restart` first; output from before
+the restart cannot be recovered.
 
 Linux/macOS:
 
 ```bash
 ./run.sh start      # starts the Verifier (port 8002), then CiteCheck (port 8001); logs in logs/
 ./run.sh status
+./run.sh logs       # follow both agent logs live
 ./run.sh stop
 ./run.sh restart    # stop + start
 ```
@@ -207,13 +271,33 @@ On first start, open the "Agent inspector" link printed by `agent.py` and connec
 (Agentverse → *Connect* → *Mailbox*). The agent is then reachable from ASI:One. Both agents must run on
 the same host: the Verifier registers a `127.0.0.1` endpoint.
 
+### Run the local audit demo
+
+Start both long-running agents with `.\run.ps1 start` (Windows) or `./run.sh start` (Linux/macOS).
+Then, in another terminal, run the demo against the ten-reference sample:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\live_e2e.py .\demo\large_references.txt .\demo\last_report.md
+```
+
+The script prints `REPORT_WRITTEN` when the live audit completes. Open the result with
+`notepad .\demo\last_report.md`. The audit uses the configured ASI1 API and live scholarly registries.
+To try a smaller sample, substitute `.\demo\demo_references.txt`.
+
 ## Test
 
+Run the offline tests (registry calls are mocked):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q tests
+```
+
+For a live service check, start the Verifier first, then run the end-to-end audit command above.
+To exercise an ACP chat round trip, start both agents, connect the CiteCheck mailbox in Agentverse,
+and run:
+
 ```bash
-python -m pytest -q tests                                          # 37 offline tests, mocked registries
-python verifier_agent.py &                                         # live: real Crossref/OpenAlex/ASI1 + Verifier agent
-python scripts/live_e2e.py demo/demo_references.txt demo/last_report.md
-python scripts/chat_client.py <citecheck address> demo/demo_references.txt   # live ACP round trip via mailbox
+python scripts/chat_client.py <citecheck-address> demo/demo_references.txt
 ```
 
 The offline suite covers parsing and DOI normalization, lookalike-title rejection, metadata mismatch,
