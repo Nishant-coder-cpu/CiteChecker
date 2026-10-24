@@ -130,8 +130,8 @@ With `PAYMENT_MODE=off` (the default) every audit is free and the payment protoc
 Requires Python 3.10–3.13 (tested on 3.12).
 
 ```bash
-git clone <this repository>
-cd fetchathon
+git clone https://github.com/Nishant-coder-cpu/CiteChecker.git
+cd CiteChecker
 python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
