@@ -26,7 +26,7 @@ start() {
   nohup "$PY" verifier_agent.py > logs/verifier.log 2>&1 & echo $! > logs/verifier.pid
   sleep 3
   nohup "$PY" agent.py > logs/citecheck.log 2>&1 & echo $! > logs/citecheck.pid
-  sleep 5
+  sleep 10
   status
 }
 
