@@ -17,15 +17,23 @@ from uagents import Agent, Context
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
+    EndSessionContent,
     TextContent,
     chat_protocol_spec,
 )
 from uagents import Protocol
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from citecheck import net  # noqa: E402
+from citecheck.resolver import ResilientResolver  # noqa: E402
+
+net.apply()
+
 target, text_path = sys.argv[1], sys.argv[2]
 timeout_s = int(os.getenv("CHAT_CLIENT_TIMEOUT", "120"))
 client = Agent(name="citecheck-chat-client", seed="citecheck-chat-client-throwaway-v1",
-               port=8120, endpoint=["http://127.0.0.1:8120/submit"])
+               port=8120, endpoint=["http://127.0.0.1:8120/submit"],
+               resolve=ResilientResolver(attempts=4))
 chat = Protocol(spec=chat_protocol_spec)
 started = {}
 
@@ -36,6 +44,9 @@ async def on_reply(ctx: Context, sender: str, msg: ChatMessage):
                                                acknowledged_msg_id=msg.msg_id))
     text = "\n".join(c.text for c in msg.content if isinstance(c, TextContent))
     elapsed = (datetime.now(timezone.utc) - started["t"]).total_seconds()
+    if not any(isinstance(c, EndSessionContent) for c in msg.content):
+        print(f"PROGRESS after {elapsed:.1f}s: {text}", flush=True)
+        return
     print(f"REPLY_FROM {sender} after {elapsed:.1f}s\n{text}", flush=True)
     os._exit(0)
 

@@ -168,12 +168,27 @@ async def _deliver(ctx: Context, recipient: str, message: ChatMessage):
     return status
 
 
+PROGRESS_UPDATES = os.getenv("PROGRESS_UPDATES", "on") == "on"
+
+
+def make_progress(ctx: Context, recipient: str):
+    """Short status messages to the chat while the audit runs (no end-session)."""
+    async def progress(text: str) -> None:
+        with trace.span("progress.send"):
+            await ctx.send(recipient, ChatMessage(
+                timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
+                content=[TextContent(type="text", text=text)],
+            ))
+    return progress
+
+
 async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str | None = None):
     tr = trace.Trace("chat_audit", sender=sender, paid=bool(preamble)).activate()
     start = time.perf_counter()
     try:
         answer = await handle_request(
-            user_text, llm, make_remote_verify(ctx, VERIFIER_ADDRESS, RESOLVER), preamble
+            user_text, llm, make_remote_verify(ctx, VERIFIER_ADDRESS, RESOLVER), preamble,
+            progress=make_progress(ctx, sender) if PROGRESS_UPDATES else None,
         )
     except Exception:
         ctx.logger.exception("Audit failed")

@@ -93,3 +93,26 @@ def test_reflection_reaudits_flagged_references(fake_registries):
         "1. LeCun, Y. (2015). Deep learning. Nature. doi:10.1038/nature14539", None, flaky_verifier))
     assert len(calls) == 2
     assert "Round 1: Verifier agent test flagged 1 issue(s); re-audited reference(s) #1. Round 2: passed." in md
+
+
+def test_progress_messages_are_ordered_and_capped(fake_registries):
+    said = []
+
+    async def progress(text):
+        said.append(text)
+
+    text = "\n".join(f"{i}. Nobody, A. (2020). Unfindable paper number {i} about things. J. X." for i in range(1, 7))
+    llm = ScriptedAgentLLM("none")
+    asyncio.run(handle_request(text, llm, None, progress=progress))
+    assert said[0].startswith("🔎 Found **6 reference(s)**")
+    assert said[-1].startswith("🛡️")
+    assert sum(s.startswith("🧠") for s in said) == 3            # capped
+
+
+def test_progress_failure_does_not_break_audit(fake_registries):
+    async def broken(text):
+        raise RuntimeError("chat down")
+
+    md = asyncio.run(handle_request("1. LeCun (2015). Deep learning. Nature. doi:10.1038/nature14539",
+                                    None, None, progress=broken))
+    assert "CiteCheck audit" in md

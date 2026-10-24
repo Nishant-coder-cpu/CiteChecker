@@ -19,6 +19,30 @@ from .verify import verify_report
 
 REFLECTION = os.getenv("AGENTIC_MODE", "on") == "on"
 RemoteVerify = Callable[[str, AuditReport], Awaitable[VerificationResult | None]]
+Progress = Callable[[str], Awaitable[None]]
+
+
+async def _say(progress: Progress | None, text: str) -> None:
+    if progress is None:
+        return
+    try:
+        await progress(text)
+    except Exception:  # noqa: BLE001 - progress updates must never break an audit
+        pass
+
+
+def _limited(progress: Progress | None, limit: int) -> Progress | None:
+    """At most `limit` messages (keeps the chat readable and the endpoint unthrottled)."""
+    if progress is None:
+        return None
+    sent = 0
+
+    async def wrapper(text: str) -> None:
+        nonlocal sent
+        if sent < limit:
+            sent += 1
+            await _say(progress, text)
+    return wrapper
 
 HELP_TEXT = f"""**CiteCheck** verifies academic references against Crossref and OpenAlex.
 
@@ -35,12 +59,19 @@ I'll report verified, mismatched and unresolved references, suggested correction
 
 
 async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None = None,
-                         preamble: str | None = None) -> str:
+                         preamble: str | None = None, progress: Progress | None = None) -> str:
     refs = parse_references(text)
     if not refs:
         return ("I couldn't find any references in that message (I look for lines with a DOI, "
                 "a year, or a numbered/bulleted list).\n\n" + HELP_TEXT)
-    report = await run_audit(refs, llm)
+    claims = sum(1 for r in refs if r.claim)
+    await _say(progress, f"🔎 Found **{len(refs)} reference(s)**"
+                         + (f" and {claims} claim(s)" if claims else "")
+                         + ". Checking each against Crossref and OpenAlex"
+                         + (", and the claims against the papers' abstracts with ASI1" if claims else "") + "…")
+    report = await run_audit(refs, llm, _limited(progress, 3))
+    await _say(progress, "🛡️ Audit done. Sending the report to the independent **Verifier agent** "
+                         "to recount and re-fetch every source…")
     verification = await _verify(text, report, remote_verify)
 
     # Reflection: feed the verifier's findings back once and re-audit what it flagged.

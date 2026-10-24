@@ -185,10 +185,14 @@ async def _investigate(ref: ParsedReference, result: ReferenceResult, llm,
 
 
 async def _audit_one(ref: ParsedReference, llm, sem: asyncio.Semaphore,
-                     agent_sem: asyncio.Semaphore) -> ReferenceResult:
+                     agent_sem: asyncio.Semaphore, progress=None) -> ReferenceResult:
     async with sem:
         result = await resolve_reference(ref)
     if AGENTIC_MODE and llm is not None and _needs_investigation(result):
+        if progress is not None:
+            await progress(f"🧠 #{ref.index} couldn't be matched automatically "
+                           f"({result.metadata_status.value.replace('_', ' ')}). The ReAct agent is investigating: "
+                           f"*{(ref.title or ref.raw)[:90]}*")
         result = await _investigate(ref, result, llm, agent_sem)
     if ref.claim:
         if result.matched and _claim_target_confident(result):
@@ -211,9 +215,9 @@ def summarize(results: list[ReferenceResult]) -> AuditSummary:
     )
 
 
-async def run_audit(refs: list[ParsedReference], llm=None) -> AuditReport:
+async def run_audit(refs: list[ParsedReference], llm=None, progress=None) -> AuditReport:
     sem, agent_sem = asyncio.Semaphore(CONCURRENCY), asyncio.Semaphore(AGENT_CONCURRENCY)
-    results = await asyncio.gather(*(_audit_one(r, llm, sem, agent_sem) for r in refs))
+    results = await asyncio.gather(*(_audit_one(r, llm, sem, agent_sem, progress) for r in refs))
     results = sorted(results, key=lambda r: r.index)
     return AuditReport(
         audit_id=uuid4().hex[:10],
