@@ -1,7 +1,6 @@
 import asyncio
 import os
 import time
-from pathlib import Path
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -79,7 +78,6 @@ agent = Agent(
         else {"mailbox": True}
     ),
     publish_agent_details=not os.getenv("AGENT_ENDPOINT"),
-    readme_path=str(Path(__file__).with_name("AGENT_README.md")),
     description=(
         "Verifies academic references against Crossref and OpenAlex, flags wrong DOIs, "
         "years and authors, checks claims against abstracts, and independently verifies its report."
