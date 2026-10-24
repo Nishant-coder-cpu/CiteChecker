@@ -109,7 +109,13 @@ def verify_report(original_text: str, report: AuditReport, live_recheck: bool = 
                     and bool(cl.quote) and norm(cl.quote) in norm(rec.abstract),
                     f"#{idx}: '{cl.status.value}' claim verdict without verifiable quoted evidence")
 
-        # 7. Independent live re-fetch of the matched record.
+        # 7. A record identified by the ReAct investigator must be one its tools returned.
+        if r.agent_trace and rec is not None and any("ReAct investigator" in n for n in r.notes):
+            observed = " ".join(r.agent_trace).lower()
+            c.check(bool(rec.doi) and rec.doi.lower() in observed,
+                    f"#{idx}: investigator-identified DOI {rec.doi} does not appear in its tool observations")
+
+        # 8. Independent live re-fetch of the matched record.
         if live_recheck and rec is not None and rec.doi:
             _recheck_live(c, idx, rec)
 

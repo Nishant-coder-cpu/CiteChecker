@@ -55,11 +55,17 @@ def render_report(report: AuditReport, verification: VerificationResult | None =
                          f"{r.claim.rationale}")
             if r.claim.quote:
                 lines.append(f"  - Abstract says: \"{_short(r.claim.quote, 300)}\"")
+        if r.agent_trace:
+            lines.append(f"- 🧠 ReAct investigator ({len(r.agent_trace)} step(s)):")
+            for step in r.agent_trace:
+                lines.append(f"  - {_short(step, 480)}")
         if r.metadata_status == MetadataStatus.VERIFIED and not r.notes and r.claim.status == ClaimStatus.NO_CLAIM:
             lines.append("- Title, year, author and DOI (where cited) agree with the registry record.")
         lines.append("")
 
     lines.append("### Quality verification")
+    for round_note in report.reflection:
+        lines.append(f"- 🔁 {round_note}")
     if verification is None:
         lines.append("- Verification did not run.")
     else:

@@ -101,6 +101,11 @@ class Trace:
                 c = groups[key]
                 bad = sum(n for st, n in c.items() if st != "ok" and st != "not_found")
                 parts.append(f"{labels[key]} {sum(c.values())}" + (f" ({bad} failed)" if bad else ""))
+        agent = [s for s in self.spans if s.name == "agent.investigate"]
+        if agent:
+            steps = sum(1 for s in self.spans if s.name == "llm.agent_step")
+            found = sum(1 for s in agent if s.status == "ok")
+            parts.append(f"ReAct agent {len(agent)} investigation(s), {steps} step(s), {found} resolved")
         parts.append(f"total {self.elapsed_ms() / 1000:.1f} s")
         return " · ".join(parts)
 

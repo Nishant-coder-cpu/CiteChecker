@@ -1,0 +1,6 @@
+Check my references, please:
+1. Kingma, D. P., & Ba, J. (2015). Adam: A method for stochastic optimisation. ICLR.
+2. Krizhevsky, A., Sutskever, I., & Hinton, G. (2017). ImageNet classification with deep convolutional neural networks. Communications of the ACM. doi:10.1038/nature14539
+3. Jumper, J., et al. (2021). Highly accurate protein structure prediction with AlphaFold. Nature. doi:10.1038/s41586-021-03819-2
+   Claim: AlphaFold predictions are far less accurate than experimental structures.
+4. Smith, J. (2021). Quantum blockchain methods for citation integrity. Journal of Imaginary Results. doi:10.9999/fake.2021.001

@@ -89,6 +89,31 @@ flowchart LR
 | [agent.py](agent.py) | ACP chat agent and Payment Protocol (seller) | — |
 | [verifier_agent.py](verifier_agent.py) | Verifier agent | — |
 
+### Agentic layer: ReAct investigator + reflection (`AGENTIC_MODE=on`)
+
+CiteCheck is a hybrid. A fast deterministic path resolves most references in about a second. When it
+can't (no confident match, a DOI that doesn't resolve, or a DOI pointing to a different paper),
+a **ReAct investigator** takes over ([citecheck/investigator.py](citecheck/investigator.py)):
+
+- ASI1 runs a **think → act → observe** loop with tool calling (up to 5 steps). Its tools are
+  `crossref_search`, `openalex_search`, `lookup_doi` and `conclude`. It decides its own strategy: spelling
+  variants, preprint vs. published version, author + year, or checking whether a journal exists at all.
+- Every record a tool returns becomes evidence `E<n>`. The agent finishes by naming an evidence id. **It
+  cannot supply metadata itself**, so it can't hallucinate a DOI.
+- Its choice passes a **deterministic gate** (DOI present, title match, year within one). In a live run
+  the agent argued that a 2025 re-upload was the 2017 Transformer paper, and the gate refused it.
+- The **Verifier agent** checks that every investigator-identified DOI appears in the agent's own tool
+  observations. The full Thought → Action → Observation transcript is shown in the report.
+- **Reflection:** if the Verifier agent reports failed checks, the flagged references are re-audited
+  once and the report is verified again. Both rounds are reported.
+
+Example from a live run: *"Kingma & Ba (2015). Adam: A method for stochastic optimisation. ICLR."* has
+no DOI and a British spelling, so the fast path finds nothing. The agent reasons that ICLR papers lack
+Crossref DOIs, searches both registries, identifies the arXiv record `10.48550/arxiv.1412.6980`, and the
+reference is verified. Try it with [demo/agentic_references.txt](demo/agentic_references.txt).
+
+Set `AGENTIC_MODE=off` to run the purely deterministic pipeline.
+
 ### Verifier agent: what "verified" means
 
 `citecheck` sends the user's original text and the full structured report to `citecheck-verifier`, a
@@ -185,7 +210,7 @@ the same host: the Verifier registers a `127.0.0.1` endpoint.
 ## Test
 
 ```bash
-python -m pytest -q tests                                          # 33 offline tests, mocked registries
+python -m pytest -q tests                                          # 37 offline tests, mocked registries
 python verifier_agent.py &                                         # live: real Crossref/OpenAlex/ASI1 + Verifier agent
 python scripts/live_e2e.py demo/demo_references.txt demo/last_report.md
 python scripts/chat_client.py <citecheck address> demo/demo_references.txt   # live ACP round trip via mailbox

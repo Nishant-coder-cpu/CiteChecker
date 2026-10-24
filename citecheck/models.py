@@ -71,6 +71,8 @@ class ReferenceResult(BaseModel):
     corrected_entry: str | None = None
     claim: ClaimAssessment
     notes: list[str] = Field(default_factory=list)  # lookup errors, unresolved reasons
+    # ReAct investigator transcript (Thought / Action / Observation lines), when it ran.
+    agent_trace: list[str] = Field(default_factory=list)
 
     @property
     def needs_attention(self) -> bool:
@@ -93,6 +95,7 @@ class AuditReport(BaseModel):
     results: list[ReferenceResult]
     summary: AuditSummary
     sources_used: list[str]
+    reflection: list[str] = Field(default_factory=list)  # verifier-feedback rounds, if any
 
 
 class VerificationResult(BaseModel):

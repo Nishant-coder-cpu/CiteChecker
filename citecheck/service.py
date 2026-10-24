@@ -2,18 +2,22 @@
 
 `remote_verify` is an injected coroutine that asks the Verifier agent; if it is
 missing or fails, the same deterministic checks run locally and the report says so.
+If verification fails, the flagged references are re-audited once (reflection).
 """
 
 import asyncio
+import os
+import re
 from collections.abc import Awaitable, Callable
 
 from . import trace
-from .audit import run_audit
+from .audit import reaudit, run_audit
 from .models import AuditReport, VerificationResult
 from .parsing import MAX_REFERENCES, parse_references
 from .report import render_report
 from .verify import verify_report
 
+REFLECTION = os.getenv("AGENTIC_MODE", "on") == "on"
 RemoteVerify = Callable[[str, AuditReport], Awaitable[VerificationResult | None]]
 
 HELP_TEXT = f"""**CiteCheck** verifies academic references against Crossref and OpenAlex.
@@ -37,7 +41,34 @@ async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None
         return ("I couldn't find any references in that message (I look for lines with a DOI, "
                 "a year, or a numbered/bulleted list).\n\n" + HELP_TEXT)
     report = await run_audit(refs, llm)
+    verification = await _verify(text, report, remote_verify)
 
+    # Reflection: feed the verifier's findings back once and re-audit what it flagged.
+    if not verification.passed and REFLECTION:
+        flagged = {int(i) for issue in verification.issues for i in re.findall(r"#(\d+)", issue)}
+        flagged = flagged or {r.index for r in report.results}
+        first = verification
+        with trace.span("reflection", references=len(flagged)) as sp:
+            report = await reaudit(report, flagged, llm)
+            verification = await _verify(text, report, remote_verify)
+            sp.set("ok" if verification.passed else "failed")
+        report.reflection.append(
+            f"Round 1: {first.verifier} flagged {first.failed_checks} issue(s); re-audited "
+            f"reference(s) {', '.join('#' + str(i) for i in sorted(flagged))}. "
+            f"Round 2: {'passed' if verification.passed else 'still failing'}."
+        )
+
+    rendered = render_report(report, verification)
+    tr = trace.current()
+    if tr is not None:
+        tr.attrs.update(references=report.summary.total, audit_id=report.audit_id,
+                        verification_passed=verification.passed, verifier=verification.verifier,
+                        reflection_rounds=len(report.reflection))
+        rendered += f"\n\n<sub>Run details: {tr.summary_line()} · trace `{tr.id}`</sub>"
+    return f"{preamble}\n\n{rendered}" if preamble else rendered
+
+
+async def _verify(text: str, report: AuditReport, remote_verify: RemoteVerify | None) -> VerificationResult:
     verification = None
     if remote_verify is not None:
         with trace.span("verify.remote") as sp:
@@ -54,10 +85,4 @@ async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None
                 "Local deterministic verifier",
             )
             sp.set(passed=verification.passed)
-    rendered = render_report(report, verification)
-    tr = trace.current()
-    if tr is not None:
-        tr.attrs.update(references=report.summary.total, audit_id=report.audit_id,
-                        verification_passed=verification.passed, verifier=verification.verifier)
-        rendered += f"\n\n<sub>Run details: {tr.summary_line()} · trace `{tr.id}`</sub>"
-    return f"{preamble}\n\n{rendered}" if preamble else rendered
+    return verification

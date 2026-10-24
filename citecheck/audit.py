@@ -5,12 +5,14 @@ used inside assess.assess_claim for the claim-support judgment.
 """
 
 import asyncio
+import os
 from collections import Counter
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from . import sources, trace
 from .assess import assess_claim
+from .investigator import investigate
 from .compare import best_candidate, compare_fields, format_entry, title_similarity, TITLE_MATCH
 from .models import (
     AuditReport,
@@ -31,6 +33,8 @@ UNRESOLVED = {
     MetadataStatus.LOOKUP_ERROR,
 }
 CONCURRENCY = 4
+AGENTIC_MODE = os.getenv("AGENTIC_MODE", "on") == "on"
+AGENT_CONCURRENCY = 3                      # concurrent investigator loops
 
 
 async def _run(fn, *args) -> sources.Lookup:
@@ -153,9 +157,39 @@ def _claim_target_confident(result: ReferenceResult) -> bool:
     return all(c.matches for c in title_checks)
 
 
-async def _audit_one(ref: ParsedReference, llm, sem: asyncio.Semaphore) -> ReferenceResult:
+def _needs_investigation(result: ReferenceResult) -> bool:
+    if not result.parsed.title and not result.parsed.doi:
+        return False
+    if result.metadata_status in (MetadataStatus.NOT_FOUND, MetadataStatus.DOI_NOT_FOUND):
+        return result.matched is None
+    # wrong DOI whose intended work the fast path could not confirm
+    return result.metadata_status == MetadataStatus.MISMATCH and result.corrected_entry is None
+
+
+async def _investigate(ref: ParsedReference, result: ReferenceResult, llm,
+                       agent_sem: asyncio.Semaphore) -> ReferenceResult:
+    context = f"status={result.metadata_status.value}; " + " ".join(result.notes)
+    async with agent_sem:
+        rec, transcript, outcome = await investigate(llm, ref, context[:800])
+    if rec is None:
+        result.agent_trace = transcript
+        result.notes.append(f"ReAct investigator: {outcome}.")
+        return result
+    checks = compare_fields(ref, rec)
+    status = MetadataStatus.VERIFIED if all(c.matches for c in checks) else MetadataStatus.MISMATCH
+    notes = [n for n in result.notes if not n.startswith(("No confident match", "Closest record"))]
+    notes.append(f"Identified by the ReAct investigator in {len(transcript)} step(s): {outcome}.")
+    new = _result(ref, status, rec, [rec.source], notes, checks)
+    new.agent_trace = transcript
+    return new
+
+
+async def _audit_one(ref: ParsedReference, llm, sem: asyncio.Semaphore,
+                     agent_sem: asyncio.Semaphore) -> ReferenceResult:
     async with sem:
         result = await resolve_reference(ref)
+    if AGENTIC_MODE and llm is not None and _needs_investigation(result):
+        result = await _investigate(ref, result, llm, agent_sem)
     if ref.claim:
         if result.matched and _claim_target_confident(result):
             result.claim = await assess_claim(llm, ref.claim, result.matched)
@@ -178,17 +212,28 @@ def summarize(results: list[ReferenceResult]) -> AuditSummary:
 
 
 async def run_audit(refs: list[ParsedReference], llm=None) -> AuditReport:
-    sem = asyncio.Semaphore(CONCURRENCY)
-    results = await asyncio.gather(*(_audit_one(r, llm, sem) for r in refs))
+    sem, agent_sem = asyncio.Semaphore(CONCURRENCY), asyncio.Semaphore(AGENT_CONCURRENCY)
+    results = await asyncio.gather(*(_audit_one(r, llm, sem, agent_sem) for r in refs))
     results = sorted(results, key=lambda r: r.index)
     return AuditReport(
         audit_id=uuid4().hex[:10],
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         results=results,
         summary=summarize(results),
-        sources_used=["Crossref REST API", "OpenAlex API"] + (["ASI1 (claim support only)"] if llm else []),
+        sources_used=["Crossref REST API", "OpenAlex API"] + (
+            ["ASI1 (claim support" + (", ReAct investigator" if AGENTIC_MODE else "") + ")"] if llm else []),
     )
 
 
 async def audit_text(text: str, llm=None) -> AuditReport:
     return await run_audit(parse_references(text), llm)
+
+
+async def reaudit(report: AuditReport, indices: set[int], llm=None) -> AuditReport:
+    """Re-run the audit for selected references (reflection after verifier feedback)."""
+    sem, agent_sem = asyncio.Semaphore(CONCURRENCY), asyncio.Semaphore(AGENT_CONCURRENCY)
+    redo = {r.index: r.parsed for r in report.results if r.index in indices}
+    fresh = await asyncio.gather(*(_audit_one(ref, llm, sem, agent_sem) for ref in redo.values()))
+    by_index = {r.index: r for r in fresh}
+    results = [by_index.get(r.index, r) for r in report.results]
+    return report.model_copy(update={"results": results, "summary": summarize(results)})
