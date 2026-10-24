@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import httpx
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from uagents import Agent, Context, Protocol
@@ -50,10 +51,11 @@ if not api_key or not seed:
 llm = AsyncOpenAI(
     base_url="https://api.asi1.ai/v1",
     api_key=api_key,
-    # api.asi1.ai is reachable only intermittently from some networks: fail fast
-    # (the claim is then reported as "not assessed") rather than stall the reply.
-    timeout=float(os.getenv("ASI1_TIMEOUT", "15")),
-    max_retries=1,
+    # From some networks about half of all connections to api.asi1.ai stall while
+    # answered calls take ~1 s, so abandon a stalled connect quickly and retry.
+    # If every attempt fails, the claim is reported as "not assessed".
+    timeout=httpx.Timeout(float(os.getenv("ASI1_TIMEOUT", "20")), connect=3.0),
+    max_retries=4,
 )
 
 
