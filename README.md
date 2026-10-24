@@ -17,7 +17,7 @@ Built for Fetch-A-Thon 3.0 (IIT Mandi).
 
 **ASI:One demo chat:** https://asi1.ai/chat/e882fc3e-a3b5-4990-ad27-78d3a7905838
 
-<!-- Add the Agentverse profile URL here once confirmed. -->
+**Agentverse profile:** https://agentverse.ai/agents/details/agent1qg70hvphw3e3x3excsqtasn0mjsz2hmqu8q7eeqcmu8pa68rhuu2kpwue43/profile
 
 ## The problem
 
