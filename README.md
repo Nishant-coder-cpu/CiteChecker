@@ -79,17 +79,17 @@ flowchart LR
     C -- markdown report --> U
 ```
 
-| Module | Responsibility | Deterministic? |
-|---|---|---|
-| [citecheck/parsing.py](citecheck/parsing.py) | Split input into references, extract DOI/year/title/author/claim | yes |
-| [citecheck/sources.py](citecheck/sources.py) | Crossref + OpenAlex clients: timeouts, one retry on 429/5xx, explicit errors | yes |
-| [citecheck/compare.py](citecheck/compare.py) | Candidate selection, field comparison, entry formatting | yes |
+| Module | Responsibility |
+|---|---|
+| [citecheck/parsing.py](citecheck/parsing.py) | Split input into references, extract DOI/year/title/author/claim |
+| [citecheck/sources.py](citecheck/sources.py) | Crossref + OpenAlex clients: timeouts, one retry on 429/5xx, explicit errors |
+| [citecheck/compare.py](citecheck/compare.py) | Candidate selection, field comparison, entry formatting |
 | [citecheck/assess.py](citecheck/assess.py) | ASI1 claim-support judgment, guarded by a verbatim-quote check | LLM + guard |
-| [citecheck/audit.py](citecheck/audit.py) | Orchestration, statuses, counts | yes |
-| [citecheck/verify.py](citecheck/verify.py) | Independent quality checks (used by the Verifier agent and the local fallback) | yes |
-| [citecheck/payment.py](citecheck/payment.py) | Optional AgentPay pricing and on-chain payment verification | yes |
-| [agent.py](agent.py) | ACP chat agent and Payment Protocol (seller) | — |
-| [verifier_agent.py](verifier_agent.py) | Verifier agent | — |
+| [citecheck/audit.py](citecheck/audit.py) | Orchestration, statuses, counts |
+| [citecheck/verify.py](citecheck/verify.py) | Independent quality checks (used by the Verifier agent and the local fallback) |
+| [citecheck/payment.py](citecheck/payment.py) | Optional AgentPay pricing and on-chain payment verification |
+| [agent.py](agent.py) | ACP chat agent and Payment Protocol (seller) |
+| [verifier_agent.py](verifier_agent.py) | Verifier agent |
 
 ### Request lifecycle and local demo
 
