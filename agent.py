@@ -50,7 +50,9 @@ if not api_key or not seed:
 llm = AsyncOpenAI(
     base_url="https://api.asi1.ai/v1",
     api_key=api_key,
-    timeout=30.0,
+    # api.asi1.ai is reachable only intermittently from some networks: fail fast
+    # (the claim is then reported as "not assessed") rather than stall the reply.
+    timeout=float(os.getenv("ASI1_TIMEOUT", "15")),
     max_retries=1,
 )
 
