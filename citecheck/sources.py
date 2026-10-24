@@ -17,7 +17,10 @@ from .models import SourceRecord
 CROSSREF = "https://api.crossref.org"
 OPENALEX = "https://api.openalex.org"
 TIMEOUT = float(os.getenv("CITECHECK_HTTP_TIMEOUT", "10"))
-RETRY_STATUSES = {429, 500, 502, 503, 504}
+# 504 is not retried: the upstream already waited for its own timeout.
+RETRY_STATUSES = {429, 500, 502, 503}
+# OpenAlex is the secondary source and often slow; cap it so it cannot dominate latency.
+OPENALEX_TIMEOUT = float(os.getenv("OPENALEX_HTTP_TIMEOUT", "6"))
 
 
 @dataclass
@@ -37,8 +40,9 @@ def _get(url: str, params: dict, session: requests.Session | None = None) -> req
     """GET with one retry on rate-limit / server errors. Raises on network failure."""
     http = session or requests
     headers = {"User-Agent": "CiteCheck/0.1 (Fetch-A-Thon citation audit agent)"}
+    timeout = OPENALEX_TIMEOUT if url.startswith(OPENALEX) else TIMEOUT
     for attempt in range(2):
-        resp = http.get(url, params=params, headers=headers, timeout=TIMEOUT)
+        resp = http.get(url, params=params, headers=headers, timeout=timeout)
         if resp.status_code not in RETRY_STATUSES or attempt == 1:
             return resp
         wait = min(float(resp.headers.get("Retry-After", "1") or 1), 3.0)

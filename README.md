@@ -125,6 +125,22 @@ are quoted at `PRICE_PER_REFERENCE_FET` (default 0.01) per reference, using the 
 
 With `PAYMENT_MODE=off` (the default) every audit is free and the payment protocol is not published.
 
+## Observability
+
+Every chat request is traced: each registry lookup, ASI1 call, Verifier exchange and reply delivery is
+recorded as a timed span with its outcome, and the whole trace is appended to `logs/traces.jsonl`.
+Each report ends with a one-line run summary and its trace id, e.g.
+`Run details: Crossref 4 · OpenAlex 4 · ASI1 1 · Verifier agent 1 · total 8.2 s · trace 921aac8b2547`.
+
+```bash
+python scripts/trace_summary.py            # outcomes, latency percentiles, per-dependency health
+python scripts/trace_summary.py --last 20
+```
+
+The traces drove several fixes: OpenAlex 504s were taking about 20 s per lookup because they were being
+retried (they no longer are), and stalled connections to Agentverse and ASI1 led to the connect-timeout
+policy in [citecheck/net.py](citecheck/net.py).
+
 ## Setup
 
 Requires Python 3.10–3.13 (tested on 3.12).
@@ -167,7 +183,7 @@ the same host: the Verifier registers a `127.0.0.1` endpoint.
 ## Test
 
 ```bash
-python -m pytest -q tests                                          # 30 offline tests, mocked registries
+python -m pytest -q tests                                          # 33 offline tests, mocked registries
 python verifier_agent.py &                                         # live: real Crossref/OpenAlex/ASI1 + Verifier agent
 python scripts/live_e2e.py demo/demo_references.txt demo/last_report.md
 python scripts/chat_client.py <citecheck address> demo/demo_references.txt   # live ACP round trip via mailbox

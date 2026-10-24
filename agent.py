@@ -29,7 +29,7 @@ from uagents_core.contrib.protocols.payment import (
     payment_protocol_spec,
 )
 
-from citecheck import net, payment
+from citecheck import net, payment, trace
 from citecheck.messages import VERIFIER_PORT, verifier_address
 from citecheck.parsing import parse_references
 from citecheck.remote import make_remote_verify
@@ -145,6 +145,13 @@ async def send_text(ctx: Context, recipient: str, text: str, end_session: bool =
     if end_session:
         content.append(EndSessionContent(type="end-session"))
     message = ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
+    with trace.span("reply.deliver") as sp:
+        status = await _deliver(ctx, recipient, message)
+        sp.set("ok" if status.status != DeliveryStatus.FAILED else "failed", detail=status.detail)
+    return status
+
+
+async def _deliver(ctx: Context, recipient: str, message: ChatMessage):
     for attempt in range(2):
         status = await ctx.send(recipient, message)
         if status.status != DeliveryStatus.FAILED:
@@ -162,6 +169,7 @@ async def send_text(ctx: Context, recipient: str, text: str, end_session: bool =
 
 
 async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str | None = None):
+    tr = trace.Trace("chat_audit", sender=sender, paid=bool(preamble)).activate()
     start = time.perf_counter()
     try:
         answer = await handle_request(
@@ -178,7 +186,8 @@ async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str
     ctx.logger.info(f"Audit response generated in {elapsed:.2f} seconds")
 
     # Send the response back to the user
-    await send_text(ctx, sender, answer)
+    status = await send_text(ctx, sender, answer)
+    tr.finish("ok" if status.status != DeliveryStatus.FAILED else "reply_failed")
 
 
 # ---------------------------------------------------------------------------

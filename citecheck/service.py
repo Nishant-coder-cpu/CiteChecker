@@ -7,6 +7,7 @@ missing or fails, the same deterministic checks run locally and the report says 
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from . import trace
 from .audit import run_audit
 from .models import AuditReport, VerificationResult
 from .parsing import MAX_REFERENCES, parse_references
@@ -39,15 +40,24 @@ async def handle_request(text: str, llm=None, remote_verify: RemoteVerify | None
 
     verification = None
     if remote_verify is not None:
-        try:
-            verification = await remote_verify(text, report)
-        except Exception:  # noqa: BLE001 - fall back to local checks below
-            verification = None
+        with trace.span("verify.remote") as sp:
+            try:
+                verification = await remote_verify(text, report)
+            except Exception:  # noqa: BLE001 - fall back to local checks below
+                verification = None
+            sp.set("ok" if verification else "fallback")
     if verification is None:
-        verification = await asyncio.to_thread(
-            verify_report, text, report, True,
-            "Local deterministic verifier (Verifier agent unavailable)" if remote_verify else
-            "Local deterministic verifier",
-        )
+        with trace.span("verify.local") as sp:
+            verification = await asyncio.to_thread(
+                verify_report, text, report, True,
+                "Local deterministic verifier (Verifier agent unavailable)" if remote_verify else
+                "Local deterministic verifier",
+            )
+            sp.set(passed=verification.passed)
     rendered = render_report(report, verification)
+    tr = trace.current()
+    if tr is not None:
+        tr.attrs.update(references=report.summary.total, audit_id=report.audit_id,
+                        verification_passed=verification.passed, verifier=verification.verifier)
+        rendered += f"\n\n<sub>Run details: {tr.summary_line()} · trace `{tr.id}`</sub>"
     return f"{preamble}\n\n{rendered}" if preamble else rendered

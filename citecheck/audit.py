@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from . import sources
+from . import sources, trace
 from .assess import assess_claim
 from .compare import best_candidate, compare_fields, format_entry, title_similarity, TITLE_MATCH
 from .models import (
@@ -34,7 +34,12 @@ CONCURRENCY = 4
 
 
 async def _run(fn, *args) -> sources.Lookup:
-    return await asyncio.to_thread(fn, *args)
+    with trace.span(f"lookup.{fn.__name__}") as sp:
+        lookup = await asyncio.to_thread(fn, *args)
+        sp.set("error" if lookup.error else "not_found" if lookup.not_found else "ok",
+               source=lookup.source, records=len(lookup.records),
+               **({"error": lookup.error} if lookup.error else {}))
+    return lookup
 
 
 def _errors(*lookups: sources.Lookup) -> list[str]:

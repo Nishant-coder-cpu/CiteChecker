@@ -9,6 +9,7 @@ abstract. Otherwise the verdict is downgraded to "uncertain".
 import json
 import re
 
+from . import trace
 from .compare import norm
 from .models import ClaimAssessment, ClaimStatus, SourceRecord
 
@@ -61,6 +62,13 @@ async def assess_claim(llm, claim: str, record: SourceRecord) -> ClaimAssessment
             status=ClaimStatus.NOT_ASSESSED, method="none", evidence_source=record.url,
             rationale="Semantic assessment unavailable (no ASI1 client configured).",
         )
+    with trace.span("llm.claim") as sp:
+        assessment = await _call_llm(llm, claim, record)
+        sp.set("ok" if assessment.method == METHOD else "error", verdict=assessment.status.value)
+    return assessment
+
+
+async def _call_llm(llm, claim: str, record: SourceRecord) -> ClaimAssessment:
     try:
         result = await llm.chat.completions.create(
             model="asi1",
