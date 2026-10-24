@@ -150,6 +150,7 @@ Linux/macOS:
 ./run.sh start      # starts the Verifier (port 8002), then CiteCheck (port 8001); logs in logs/
 ./run.sh status
 ./run.sh stop
+./run.sh restart    # stop + start
 ```
 
 Any OS, in two terminals:
