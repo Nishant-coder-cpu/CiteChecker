@@ -15,7 +15,7 @@ Built for Fetch-A-Thon 3.0 (IIT Mandi).
 | `citecheck` | ACP chat agent used from ASI:One (mailbox) | `agent1qg70hvphw3e3x3excsqtasn0mjsz2hmqu8q7eeqcmu8pa68rhuu2kpwue43` |
 | `citecheck-verifier` | Independent report verifier (called by `citecheck`) | `agent1qttrf9g8ezyw62vrhqafhdupvxa4j5pgyql2wqemf827m8ug3fgy7ywcjez` |
 
-**ASI:One demo chat:**https://asi1.ai/chat/e882fc3e-a3b5-4990-ad27-78d3a7905838
+**ASI:One demo chat:** https://asi1.ai/chat/e882fc3e-a3b5-4990-ad27-78d3a7905838
 
 **Agentverse profile:** https://agentverse.ai/agents/details/agent1qg70hvphw3e3x3excsqtasn0mjsz2hmqu8q7eeqcmu8pa68rhuu2kpwue43/profile
 
