@@ -1,0 +1,12 @@
+Please check these references for my literature review:
+1. LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. Nature, 521, 436-444. doi:10.1038/nature14539
+2. Krizhevsky, A., Sutskever, I., & Hinton, G. (2017). ImageNet classification with deep convolutional neural networks. Communications of the ACM, 60(6). doi:10.1145/3065386
+   Claim: A deep convolutional network achieved a top-5 error rate of 17.0% on the ImageNet test data.
+3. Jumper, J., et al. (2021). Highly accurate protein structure prediction with AlphaFold. Nature. doi:10.1038/s41586-021-03819-2
+   Claim: AlphaFold predictions are far less accurate than experimental structures.
+4. Jordan, M. I., & Mitchell, T. M. (2015). Machine learning: Trends, perspectives, and prospects. Science. doi:10.1126/science.aaa8415
+   Claim: Machine learning reduced hospital readmissions by 40% in a randomized trial.
+5. He, K., Zhang, X., Ren, S., & Sun, J. (2014). Deep residual learning for image recognition. CVPR. doi:10.1109/CVPR.2016.90
+6. Krizhevsky, A., Sutskever, I., & Hinton, G. (2012). ImageNet classification with deep convolutional neural networks. NeurIPS. doi:10.1038/nature14539
+7. Smith, J. (2021). Quantum blockchain methods for citation integrity. Journal of Imaginary Results. doi:10.9999/fake.2021.001
+8. Vaswani, A., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems.

@@ -1,0 +1,7 @@
+uagents==0.25.5
+uagents-core==0.4.12
+openai==3.37.0
+python-dotenv==1.2.4
+requests==2.34.2
+cosmpy==0.12.2
+pytest==9.1.1

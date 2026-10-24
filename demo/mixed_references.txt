@@ -1,0 +1,7 @@
+Please verify these references:
+1. LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. Nature, 521, 436-444. doi:10.1038/nature14539
+2. He, K., Zhang, X., Ren, S., & Sun, J. (2014). Deep residual learning for image recognition. CVPR. https://doi.org/10.1109/CVPR.2016.90
+3. Smith, J. (2021). Quantum blockchain methods for citation integrity. Journal of Imaginary Results. doi:10.9999/fake.2021.001
+4. Krizhevsky, A., Sutskever, I., & Hinton, G. (2017). ImageNet classification with deep convolutional neural networks. Communications of the ACM. doi:10.1038/nature14539
+5. Vaswani, A., et al. (2017). Attention is all you need. Advances in Neural Information Processing Systems.
+6. Some paper about cells.

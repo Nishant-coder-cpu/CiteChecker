@@ -1,0 +1,35 @@
+{
+  "mode": "bureau",
+  "receiver": "agent1q200snutn9aqr27n3j02ml3fuh8f4y5q8km3vzctw9pgr3yxhg485cd57tv",
+  "checks": {
+    "distinct_identities": {
+      "ok": true,
+      "detail": "sender=agent1qgseaqce0l.. receiver=agent1q200snutn9.."
+    },
+    "round_trip_0": {
+      "ok": true,
+      "detail": "status=delivered endpoint='' detail='Message dispatched locally' reply=PingResponse(request_id='ping-0-55ce7a', echo='hello', receiver_note='handled-by:agent1q200snutn9aqr27n3j02ml3fuh8f4y5q8km3vzctw9pgr3yxhg485cd57tv')"
+    },
+    "round_trip_1": {
+      "ok": true,
+      "detail": "status=delivered endpoint='' detail='Message dispatched locally' reply=PingResponse(request_id='ping-1-b5e56e', echo='hello', receiver_note='handled-by:agent1q200snutn9aqr27n3j02ml3fuh8f4y5q8km3vzctw9pgr3yxhg485cd57tv')"
+    },
+    "round_trip_2": {
+      "ok": true,
+      "detail": "status=delivered endpoint='' detail='Message dispatched locally' reply=PingResponse(request_id='ping-2-5ebb3c', echo='hello', receiver_note='handled-by:agent1q200snutn9aqr27n3j02ml3fuh8f4y5q8km3vzctw9pgr3yxhg485cd57tv')"
+    },
+    "unreachable_recipient_fails_cleanly": {
+      "ok": true,
+      "detail": "status=failed detail='Unable to resolve destination endpoint'"
+    },
+    "response_timeout_handled": {
+      "ok": true,
+      "detail": "status=failed detail='Timeout waiting for response'"
+    },
+    "unsupported_message_no_crash": {
+      "ok": true,
+      "detail": "status=delivered detail='Message dispatched locally'"
+    }
+  },
+  "sender": "agent1qgseaqce0lnzsyv8c4070mpcfqq4sh8x2u352jrjqkdqnxzx75gzyxs4n5m"
+}
