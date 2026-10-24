@@ -167,7 +167,7 @@ the same host: the Verifier registers a `127.0.0.1` endpoint.
 ## Test
 
 ```bash
-python -m pytest -q tests                                          # 26 offline tests, mocked registries
+python -m pytest -q tests                                          # 30 offline tests, mocked registries
 python verifier_agent.py &                                         # live: real Crossref/OpenAlex/ASI1 + Verifier agent
 python scripts/live_e2e.py demo/demo_references.txt demo/last_report.md
 python scripts/chat_client.py <citecheck address> demo/demo_references.txt   # live ACP round trip via mailbox
@@ -191,6 +191,9 @@ The agent-to-agent connectivity experiments that informed the design are in
   year-mismatched search hit rather than "correcting" toward it. Not found ≠ fake.
 - **Heuristic parsing.** Unusual citation styles may lose the title or author. The report then shows
   fewer field checks rather than inventing values.
+- **Almanac lookups can stall.** The SDK's lookup gives up after one 5 s request, so CiteCheck uses a
+  resolver ([citecheck/resolver.py](citecheck/resolver.py)) that retries, falls back to the last good result,
+  and reaches the co-located Verifier at its local endpoint. Replies are checked for delivery and retried once.
 - **OpenAlex is sometimes slow or returns 5xx.** Lookups fall back to Crossref, and the report notes the
   outage.
 - **Same-host Verifier.** The Verifier uses a localhost endpoint. Cross-machine delivery via Agentverse

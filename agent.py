@@ -8,6 +8,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from uagents import Agent, Context, Protocol
+from uagents_core.types import DeliveryStatus
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
@@ -28,9 +29,10 @@ from uagents_core.contrib.protocols.payment import (
 )
 
 from citecheck import payment
-from citecheck.messages import verifier_address
+from citecheck.messages import VERIFIER_PORT, verifier_address
 from citecheck.parsing import parse_references
 from citecheck.remote import make_remote_verify
+from citecheck.resolver import ResilientResolver
 from citecheck.service import HELP_TEXT, handle_request
 
 # Load configuration from .env
@@ -52,6 +54,9 @@ llm = AsyncOpenAI(
     max_retries=1,
 )
 
+
+VERIFIER_ADDRESS = verifier_address(seed)
+
 # Fetch.ai agent configuration
 agent = Agent(
     name="citecheck",
@@ -70,9 +75,13 @@ agent = Agent(
         "years and authors, checks claims against abstracts, and independently verifies its report."
     ),
     handle_messages_concurrently=True,
+    # Retries transient Almanac API stalls (replies to ASI:One depend on it) and
+    # reaches the co-located Verifier agent at its known local endpoint.
+    resolve=ResilientResolver(
+        static={VERIFIER_ADDRESS: f"http://127.0.0.1:{VERIFIER_PORT}/submit"}
+    ),
 )
 
-VERIFIER_ADDRESS = verifier_address(seed)
 
 chat = Protocol(spec=chat_protocol_spec)
 
@@ -119,10 +128,16 @@ async def send_text(ctx: Context, recipient: str, text: str, end_session: bool =
     content = [TextContent(type="text", text=text)]
     if end_session:
         content.append(EndSessionContent(type="end-session"))
-    await ctx.send(
-        recipient,
-        ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content),
-    )
+    message = ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
+    for attempt in range(2):
+        status = await ctx.send(recipient, message)
+        if status.status != DeliveryStatus.FAILED:
+            ctx.logger.info(f"Reply to {recipient}: {status.status.value} ({status.detail})")
+            return status
+        ctx.logger.warning(f"Reply attempt {attempt + 1} to {recipient} failed: {status.detail}")
+        await asyncio.sleep(2)
+    ctx.logger.error(f"Reply to {recipient} could not be delivered")
+    return status
 
 
 async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str | None = None):
@@ -143,7 +158,6 @@ async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str
 
     # Send the response back to the user
     await send_text(ctx, sender, answer)
-    ctx.logger.info(f"Response sent to {sender}")
 
 
 # ---------------------------------------------------------------------------
