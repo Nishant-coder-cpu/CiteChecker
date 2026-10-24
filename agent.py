@@ -29,7 +29,7 @@ from uagents_core.contrib.protocols.payment import (
     payment_protocol_spec,
 )
 
-from citecheck import payment
+from citecheck import net, payment
 from citecheck.messages import VERIFIER_PORT, verifier_address
 from citecheck.parsing import parse_references
 from citecheck.remote import make_remote_verify
@@ -38,6 +38,7 @@ from citecheck.service import HELP_TEXT, handle_request
 
 # Load configuration from .env
 load_dotenv()
+net.apply()  # IPv4 + fast connect timeouts (see citecheck/net.py)
 
 api_key = os.getenv("ASI_ONE_API_KEY")
 seed = os.getenv("AGENT_SEED")

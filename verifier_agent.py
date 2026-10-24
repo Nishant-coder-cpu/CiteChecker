@@ -12,11 +12,13 @@ import os
 from dotenv import load_dotenv
 from uagents import Agent, Context
 
+from citecheck import net
 from citecheck.messages import VERIFIER_PORT, VerifyRequest, VerifyResponse, verifier_seed
 from citecheck.models import AuditReport
 from citecheck.verify import verify_report
 
 load_dotenv()
+net.apply()  # IPv4 + fast connect timeouts (see citecheck/net.py)
 
 seed = os.getenv("AGENT_SEED")
 if not seed:
