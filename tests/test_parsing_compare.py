@@ -69,3 +69,17 @@ def test_format_entry_uses_only_retrieved_fields():
     assert entry == "LeCun, Bengio, & Hinton (2015). Deep learning. Nature. https://doi.org/10.1038/nature14539"
     bare = SourceRecord(source="crossref", url="u", title="T")
     assert format_entry(bare) == "[authors not listed] (n.d.). T."
+
+
+def test_run_together_references_are_split():
+    text = ("Check my references, please: Kingma, D. P., & Ba, J. (2015). Adam: A method for stochastic optimisation. "
+            "ICLR. Krizhevsky, A., Sutskever, I., & Hinton, G. (2017). ImageNet classification with deep convolutional "
+            "neural networks. Communications of the ACM. doi:10.1038/nature14539 Jumper, J., et al. (2021). Highly "
+            "accurate protein structure prediction with AlphaFold. Nature. doi:10.1038/s41586-021-03819-2 Claim: "
+            "AlphaFold predictions are far less accurate than experimental structures. Smith, J. (2021). Quantum "
+            "blockchain methods for citation integrity. Journal of Imaginary Results. doi:10.9999/fake.2021.001")
+    refs = parse_references(text)
+    assert [r.first_author for r in refs] == ["Kingma", "Krizhevsky", "Jumper", "Smith"]
+    assert refs[1].doi == "10.1038/nature14539" and refs[3].doi == "10.9999/fake.2021.001"
+    assert refs[2].claim == "AlphaFold predictions are far less accurate than experimental structures."
+    assert refs[0].title.startswith("Adam")

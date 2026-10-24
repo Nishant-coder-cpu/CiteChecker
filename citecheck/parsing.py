@@ -18,7 +18,10 @@ DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s\"<>]+)", re.IGNORECASE)
 YEAR_RE = re.compile(r"\((\d{4})[a-z]?\)|\b((?:19|20)\d{2})\b")
 MARKER_RE = re.compile(r"^\s*(?:\[\d+\]|\d+[.)]|[-*•])\s+")
 CLAIM_LINE_RE = re.compile(r"^\s*claim\s*[:\-]\s*(.+)$", re.IGNORECASE)
-INLINE_CLAIM_RE = re.compile(r"\s*(?:\||—|--)\s*claim\s*[:\-]\s*(.+)$", re.IGNORECASE)
+INLINE_CLAIM_RE = re.compile(r"\s*(?:(?:\||—|--)\s*[Cc]laim|\sClaim)\s*[:\-]\s*(.+)$")
+# Where a new reference starts inside run-together text: ". Surname, I." (chat apps may drop newlines)
+RUN_TOGETHER_RE = re.compile(r"(?<=[.:\d])\s+(?=[A-Z][A-Za-zÀ-ſ'\-]+, (?:[A-Z]\.\s?)+[,(&]?)")
+PAREN_YEAR_RE = re.compile(r"\((?:19|20)\d{2}[a-z]?\)")
 QUOTED_TITLE_RE = re.compile(r"[\"“](.+?)[\"”]")
 
 MAX_REFERENCES = 15
@@ -74,8 +77,15 @@ def _extract_first_author(text: str) -> str | None:
 def _split_blocks(text: str) -> list[tuple[str, str | None]]:
     """Group lines into (reference_text, claim) pairs."""
     blocks: list[list] = []  # each: [ref_text, claim]
-    has_markers = any(MARKER_RE.match(line) for line in text.splitlines())
+    lines = []
     for line in text.splitlines():
+        # A single line holding several "(Year)" citations was run together: split it.
+        if len(PAREN_YEAR_RE.findall(line)) >= 2:
+            lines.extend(RUN_TOGETHER_RE.split(line))
+        else:
+            lines.append(line)
+    has_markers = any(MARKER_RE.match(line) for line in lines)
+    for line in lines:
         if not line.strip():
             continue
         claim_match = CLAIM_LINE_RE.match(line)
