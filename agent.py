@@ -56,6 +56,11 @@ llm = AsyncOpenAI(
 
 
 VERIFIER_ADDRESS = verifier_address(seed)
+# Retries transient Almanac API stalls (replies to ASI:One depend on it) and
+# reaches the co-located Verifier agent at its known local endpoint.
+RESOLVER = ResilientResolver(
+    static={VERIFIER_ADDRESS: f"http://127.0.0.1:{VERIFIER_PORT}/submit"}
+)
 
 # Fetch.ai agent configuration
 agent = Agent(
@@ -75,15 +80,12 @@ agent = Agent(
         "years and authors, checks claims against abstracts, and independently verifies its report."
     ),
     handle_messages_concurrently=True,
-    # Retries transient Almanac API stalls (replies to ASI:One depend on it) and
-    # reaches the co-located Verifier agent at its known local endpoint.
-    resolve=ResilientResolver(
-        static={VERIFIER_ADDRESS: f"http://127.0.0.1:{VERIFIER_PORT}/submit"}
-    ),
+    resolve=RESOLVER,
 )
 
 
 chat = Protocol(spec=chat_protocol_spec)
+IN_PROGRESS: set[tuple[str, int]] = set()
 
 
 @chat.on_message(ChatMessage)
@@ -116,12 +118,21 @@ async def handle_chat(
         await send_text(ctx, sender, HELP_TEXT)
         return
 
+    request_key = (sender, hash(user_text))
+    if request_key in IN_PROGRESS:
+        ctx.logger.info(f"Duplicate request from {sender} while the audit is running; skipped")
+        return
+
     n_refs = len(parse_references(user_text))
     if payment.requires_payment(n_refs):
         await request_payment(ctx, sender, user_text, n_refs)
         return
 
-    await run_and_reply(ctx, sender, user_text)
+    IN_PROGRESS.add(request_key)
+    try:
+        await run_and_reply(ctx, sender, user_text)
+    finally:
+        IN_PROGRESS.discard(request_key)
 
 
 async def send_text(ctx: Context, recipient: str, text: str, end_session: bool = True):
@@ -134,7 +145,12 @@ async def send_text(ctx: Context, recipient: str, text: str, end_session: bool =
         if status.status != DeliveryStatus.FAILED:
             ctx.logger.info(f"Reply to {recipient}: {status.status.value} ({status.detail})")
             return status
-        ctx.logger.warning(f"Reply attempt {attempt + 1} to {recipient} failed: {status.detail}")
+        if "timeout" in (status.detail or "").lower() or "429" in (status.detail or ""):
+            # After a send timeout the envelope may still go out (a retry could
+            # deliver it twice); after a 429, retrying only adds load.
+            ctx.logger.warning(f"Reply to {recipient}: status unknown ({status.detail})")
+            return status
+        ctx.logger.warning(f"Reply attempt {attempt + 1} to {recipient} not sent: {status.detail}")
         await asyncio.sleep(2)
     ctx.logger.error(f"Reply to {recipient} could not be delivered")
     return status
@@ -144,7 +160,7 @@ async def run_and_reply(ctx: Context, sender: str, user_text: str, preamble: str
     start = time.perf_counter()
     try:
         answer = await handle_request(
-            user_text, llm, make_remote_verify(ctx, VERIFIER_ADDRESS), preamble
+            user_text, llm, make_remote_verify(ctx, VERIFIER_ADDRESS, RESOLVER), preamble
         )
     except Exception:
         ctx.logger.exception("Audit failed")
