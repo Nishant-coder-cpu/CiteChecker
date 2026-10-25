@@ -141,10 +141,9 @@ async def handle_chat(
 
 
 async def send_text(ctx: Context, recipient: str, text: str, end_session: bool = True):
-    # The ASI:One/Flock chat relay can time out on a large Markdown payload.
-    # Send a long report in small, ordered ACP messages and close the session
-    # only after its last part.  This also makes a partial result visible if a
-    # relay fails midway through delivery.
+    # ASI:One renders only the final ACP message in some chats. Keep a normal
+    # report in one message so the beginning is not hidden by a later chunk.
+    # _message_parts remains as a safety valve for an exceptionally large reply.
     parts = _message_parts(text)
     status = None
     with trace.span("reply.deliver", parts=len(parts)) as sp:
@@ -161,7 +160,7 @@ async def send_text(ctx: Context, recipient: str, text: str, end_session: bool =
     return status
 
 
-MAX_CHAT_MESSAGE_CHARS = int(os.getenv("MAX_CHAT_MESSAGE_CHARS", "6000"))
+MAX_CHAT_MESSAGE_CHARS = int(os.getenv("MAX_CHAT_MESSAGE_CHARS", "50000"))
 
 
 def _message_parts(text: str) -> list[str]:
